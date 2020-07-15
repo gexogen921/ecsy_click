@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Hello!</title>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+    </style>
+
+    <script type="module">
+        const mouse = { x: 0, y: 0 };
+        let isRegistered = false;
+        const temporaryEntity = [];
+
+        // Initialize canvas
+        let canvas = document.querySelector("canvas");
+        let canvasWidth = canvas.width = window.innerWidth;
+        let canvasHeight = canvas.height = window.innerHeight;
+        let ctx = canvas.getContext("2d");
+
+        const sixes = [];
+
+        const NUM_ELEMENTS = 40;
+        const SPEED_MULTIPLIER = 0.3;
+
+        import { World, System, Component, TagComponent, Types } from "https://ecsy.io/build/ecsy.module.js";
+        var world = new World();
+
+        // Velocity component
+        class Velocity extends Component {}
+
+        Velocity.schema = {
+            x: { type: Types.Number },
+            y: { type: Types.Number }
+        };
+
+        // Position component
+        class Position extends Component {}
+
+        Position.schema = {
+            x: { type: Types.Number },
+            y: { type: Types.Number }
+        };
+
+        // Shape component
+        class Shape extends Component {}
+
+        Shape.schema = {
+            primitive: { type: Types.String, default: 'box' }
+        };
+
+        // Renderable component
+        class Renderable extends TagComponent {}
+
+        //----------------------
+        // Systems
+        //----------------------
+
+        // MovableSystem
+        class MovableSystem extends System {
+            // This method will get called on every frame by default
+            execute(delta, time) {
+                // Iterate through all the entities on the query
+                this.queries.moving.results.forEach((entity, i) => {
+                    var velocity = entity.getComponent(Velocity);
+                    var position = entity.getMutableComponent(Position);
+
+                    if (temporaryEntity[i] && temporaryEntity[i].die < time) {
+                        return;
+                    }
+
+                    position.x += velocity.x * 2;
+                    position.y += velocity.y * 2;
+                });
+            }
+        }
+
+        // Define a query of entities that have "Velocity" and "Position" components
+        MovableSystem.queries = {
+            moving: {
+                components: [Velocity, Position]
+            }
+        }
+
+        // RendererSystem
+        class RendererSystem extends System {
+            // This method will get called on every frame by default
+            execute(delta, time) {
+                ctx.fillStyle = "#d4d4d4";
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+
+                // Iterate through all the entities on the query
+                this.queries.renderables.results.forEach((entity, i) => {
+                    var shape = entity.getComponent(Shape);
+                    var position = entity.getComponent(Position);
+
+                    if (!temporaryEntity[i]) {
+                        temporaryEntity.push({
+                            die: time + Math.floor(Math.random() * (5000 - 1000)) + 1000
+                        })
+                    }
+
+                    if (temporaryEntity[i] && temporaryEntity[i].die < time) {
+                        return;
+                    }
+
+                    if (shape.primitive === 'box') {
+                        this.drawBox(position, sixes[i].SHAPE_SIZE, sixes[i].SHAPE_HALF_SIZE);
+                    } else {
+                        this.drawCircle(position, sixes[i].SHAPE_SIZE, sixes[i].SHAPE_HALF_SIZE);
+                    }
+                });
+            }
+
+            drawCircle(position, SHAPE_SIZE, SHAPE_HALF_SIZE) {
+                ctx.beginPath();
+                ctx.arc(position.x, position.y, SHAPE_HALF_SIZE, 0, 2 * Math.PI, false);
+                ctx.fillStyle= "#39c495";
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "#0b845b";
+                ctx.stroke();
+            }
+
+            drawBox(position, SHAPE_SIZE, SHAPE_HALF_SIZE) {
+                ctx.beginPath();
+                ctx.rect(position.x - SHAPE_HALF_SIZE, position.y - SHAPE_HALF_SIZE, SHAPE_SIZE, SHAPE_SIZE);
+                ctx.fillStyle= "#e2736e";
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "#b74843";
+                ctx.stroke();
+            }
+        }
+
+        // Define a query of entities that have "Renderable" and "Shape" components
+        RendererSystem.queries = {
+            renderables: { components: [Renderable, Shape] }
+        }
+        // Some helper functions when creating the components
+        function getRandomVelocity() {
+            return {
+                x: SPEED_MULTIPLIER * (2 * Math.random() - 1),
+                y: SPEED_MULTIPLIER * (2 * Math.random() - 1)
+            };
+        }
+
+        function getRandomPosition() {
+            return {
+                x: mouse.x,
+                y: mouse.y
+            };
+        }
+
+        function getRandomShape() {
+            return {
+                primitive: Math.random() >= 0.5 ? 'circle' : 'box'
+            };
+        }
+
+
+        const displayDate = (event) => {
+            mouse.x = event.x;
+            mouse.y = event.y;
+
+            for (let i = 0; i < 40; i++) {
+                const SHAPE_SIZE = Math.floor(Math.random() * (50 - 1)) + 1;
+                const SHAPE_HALF_SIZE = SHAPE_SIZE / 2;
+
+                sixes.push({
+                    SHAPE_SIZE,
+                    SHAPE_HALF_SIZE
+                })
+            }
+
+            if (!isRegistered) {
+                world
+                    .registerComponent(Velocity)
+                    .registerComponent(Position)
+                    .registerComponent(Shape)
+                    .registerComponent(Renderable)
+                    .registerSystem(MovableSystem)
+                    .registerSystem(RendererSystem);
+            }
+
+            for (let i = 0; i < NUM_ELEMENTS; i++) {
+                world
+                    .createEntity()
+                    .addComponent(Velocity, getRandomVelocity())
+                    .addComponent(Shape, getRandomShape())
+                    .addComponent(Position, getRandomPosition())
+                    .addComponent(Renderable)
+            }
+
+            // Run!
+            function run() {
+                // Compute delta and elapsed time
+                var time = performance.now();
+                var delta = time - lastTime;
+
+                // Run all the systems
+                world.execute(delta, time);
+
+                lastTime = time;
+                requestAnimationFrame(run);
+            }
+
+            var lastTime = performance.now();
+            isRegistered = true;
+            run();
+        };
+        document.addEventListener("click", displayDate);
+
+        //
+        // class Velocity extends Component {}
+        // Velocity.schema = {
+        //     x: { type: Types.Number },
+        //     y: { type: Types.Number }
+        // };
+        // class Position extends Component {}
+        // Position.schema = {
+        //     x: { type: Types.Number },
+        //     y: { type: Types.Number }
+        // };
+        // // Shape component
+        // class Shape extends Component {}
+        // Shape.schema = { primitive: { type: Types.String, default: 'box' } };
+        // // Renderable component
+        // class Renderable extends TagComponent {}
+        //
+        // class MovableSystem extends System {
+        //     // This method will get called on every frame by default
+        //     execute(delta, time) {
+        //         // Iterate through all the entities on the query
+        //         this.queries.moving.results.forEach(entity => {
+        //             var velocity = entity.getComponent(Velocity);
+        //             var position = entity.getMutableComponent(Position);
+        //             position.x += velocity.x * delta;
+        //             position.y += velocity.y * delta;
+        //         });
+        //     }
+        // }
+        //
+        // MovableSystem.queries = {
+        //     moving: {
+        //         components: [Velocity, Position]
+        //     }
+        // };
+        //
+        // class ParticlesSystem extends System {
+        //     sizes = [];
+        //     speed = 0.3;
+        //     canvas = document.querySelector("canvas");
+        //     canvasWidth = this.canvas.width = window.innerWidth;
+        //     canvasHeight = this.canvas.height = window.innerHeight;
+        //     ctx = this.canvas.getContext("2d");
+        //     lastTime = performance.now();
+        //
+        //     createWorld(world, x, y, count) {
+        //         this.x = x;
+        //         this.y = y;
+        //         this.count = count;
+        //     }
+        //
+        //     run() {
+        //         if (!this || !this.lastTime) {
+        //             return;
+        //         }
+        //         const time = performance.now();
+        //         const delta = time - this.lastTime;
+        //
+        //         this.world.execute(delta, time);
+        //         this.lastTime = time;
+        //
+        //         requestAnimationFrame(this.run);
+        //     }
+        //
+        //     drawCircle(position, size, half) {
+        //         this.ctx.beginPath();
+        //         this.ctx.arc(position.x, position.y, half, 0, 2 * Math.PI, false);
+        //         this.ctx.fillStyle= "#39c495";
+        //         this.ctx.fill();
+        //         this.ctx.lineWidth = 2;
+        //         this.ctx.strokeStyle = "#0b845b";
+        //         this.ctx.stroke();
+        //     }
+        //
+        //     drawBox(position, size, half) {
+        //         this.ctx.beginPath();
+        //         this.ctx.rect(position.x - half, position.y - half, size, size);
+        //         this.ctx.fillStyle= "#e2736e";
+        //         this.ctx.fill();
+        //         this.ctx.lineWidth = 2;
+        //         this.ctx.strokeStyle = "#b74843";
+        //         this.ctx.stroke();
+        //     }
+        //
+        //     getRandomShape() {
+        //         return {
+        //             primitive: Math.random() >= 0.5 ? 'circle' : 'box'
+        //         };
+        //     }
+        //
+        //     getRandomVelocity() {
+        //         return {
+        //             x: this.speed * (2 * Math.random() - 1),
+        //             y: this.speed * (2 * Math.random() - 1)
+        //         };
+        //     }
+        //
+        //     getRandomPosition() {
+        //         return {
+        //             x: this.x,
+        //             y: this.y
+        //         };
+        //     }
+        //
+        //     execute(delta, time) {
+        //         this.canvas = document.querySelector("canvas");
+        //         this.canvasWidth = this.canvas.width = window.innerWidth;
+        //         this.canvasHeight = this.canvas.height = window.innerHeight;
+        //         this.ctx = this.canvas.getContext("2d");
+        //         this.ctx.fillStyle = "#ffffff";
+        //         const sizes = [];
+        //         this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+        //
+        //         for (let i = 0; i < 5; i++) {
+        //             const size = Math.floor(Math.random() * (50 - 1)) + 1;
+        //             const half = size / 2;
+        //             const dies = Math.floor(Math.random() * (5000 - 500)) + 500;
+        //
+        //             sizes.push({
+        //                 size,
+        //                 half,
+        //                 dies
+        //             })
+        //         }
+        //
+        //
+        //         this.queries.renderables.results.forEach((entity, i) => {
+        //             var shape = entity.getComponent(Shape);
+        //             var position = entity.getComponent(Position);
+        //
+        //             if (shape.primitive === 'box') {
+        //                 this.drawBox(position, sizes[i].size, sizes[i].half);
+        //             } else {
+        //                 this.drawCircle(position, sizes[i].size, sizes[i].half);
+        //             }
+        //
+        //             setTimeout(() => { entity.removeAllComponents(Shape); }, sizes[i].dies);
+        //         });
+        //     }
+        // }
+        //
+        // ParticlesSystem.queries = {
+        //     renderables: { components: [Renderable, Shape] }
+        // };
+        //
+        // const displayDate = (event) => {
+        //     if (event.x && event.y) {
+        //         const world = new World();
+        //         const particle = new ParticlesSystem(world);
+        //         particle.createWorld(world, event.x, event.y, 5);
+        //
+        //         world
+        //             .registerComponent(Velocity)
+        //             .registerComponent(Position)
+        //             .registerComponent(Shape)
+        //             .registerComponent(Renderable)
+        //             .registerSystem(MovableSystem)
+        //             .registerSystem(ParticlesSystem);
+        //
+        //         for (let i = 0; i < 5; i++) {
+        //             world
+        //                 .createEntity()
+        //                 .addComponent(Velocity, particle.getRandomVelocity())
+        //                 .addComponent(Shape, particle.getRandomShape())
+        //                 .addComponent(Position, particle.getRandomPosition())
+        //                 .addComponent(Renderable)
+        //         }
+        //
+        //         particle.run();
+        //     }
+        // };
+        //
+        // document.addEventListener("click", displayDate);
+    </script>
+</head>
+<body>
+<canvas width="500" height="500"></canvas>
+</body>
+</html>
